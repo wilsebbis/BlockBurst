@@ -4,6 +4,7 @@
  */
 import { useState } from 'react';
 import { Button, Panel, Pill, Screen } from '../components/shared/ui';
+import { HomeLogo } from '../components/meta/HomeLogo';
 import { TickingNumber } from '../components/shared/TickingNumber';
 import { worldOf } from '../engine/levels';
 import { PENGUIN_IDLE_IMAGE_PATH } from '../exhibit/tuning';
@@ -12,11 +13,10 @@ import { clearGame, loadGame, type Saved } from '../lib/resume';
 import { useMetaStore } from '../stores/useMetaStore';
 import { useNav } from '../stores/useNav';
 
-const LOGO_COLOURS = ['#ef4444', '#facc15', '#3b82f6', '#22c55e'];
-
 export function HomeScreen() {
   const coins = useMetaStore((s) => s.coins);
   const nextLevel = useMetaStore((s) => s.adventure.unlocked);
+  const reducedMotion = useMetaStore((s) => s.settings.reducedMotion) || matchMedia('(prefers-reduced-motion: reduce)').matches;
   const start = useNav((x) => x.start);
   const go = useNav((x) => x.go);
   const world = worldOf(nextLevel);
@@ -32,16 +32,11 @@ export function HomeScreen() {
         </Button>
       </div>
       <div className="px-4">
-        <div className="mt-6 flex items-center justify-center gap-3" aria-hidden>
-          <span className="grid grid-cols-2 gap-1">
-            {LOGO_COLOURS.map((colour) => (
-              <span key={colour} className="h-5 w-5 rounded-[5px]" style={{ background: colour, boxShadow: 'inset 0 -3px 0 rgba(0,0,0,.25)' }} />
-            ))}
-          </span>
-          <h1 className="font-display text-5xl font-extrabold leading-none text-white text-outline">Block Burst</h1>
-        </div>
+        <h1 className="mt-4">
+          <HomeLogo still={reducedMotion} />
+        </h1>
 
-        <p className="mt-10 text-center font-display text-sm font-extrabold uppercase tracking-wide text-white/70">
+        <p className="mt-6 text-center font-display text-sm font-extrabold uppercase tracking-wide text-white/70">
           {world.emoji} {world.name}
         </p>
         <h2 className="text-center font-display text-6xl font-extrabold leading-tight text-white">Level {nextLevel}</h2>
