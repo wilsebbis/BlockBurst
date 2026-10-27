@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="theme-color" content="#141a3d" />
+    <meta name="color-scheme" content="dark" />
+    <meta name="description" content="Block Burst: drag blocks onto an 8x8 board and clear lines. A new Daily Board every day, Adventure levels, ranks, weekly leagues, a season pass and crews." />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <title>Block Burst</title>
+  </head>
+  <body>
+    <div id="root">
+      <!-- Skeleton shown until the app hydrates: the same shape as the home screen, so nothing jumps. -->
+      <div style="min-height:100%;display:flex;flex-direction:column;align-items:center;gap:16px;padding:64px 16px;background:linear-gradient(180deg,#3b4fa8,#141a3d)">
+        <div style="width:220px;height:56px;border-radius:16px;background:rgba(255,255,255,.12)"></div>
+        <div style="width:min(92vw,360px);aspect-ratio:1;border-radius:20px;background:rgba(255,255,255,.08)"></div>
+        <div style="width:min(92vw,360px);height:64px;border-radius:16px;background:rgba(250,204,21,.35)"></div>
+      </div>
+    </div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

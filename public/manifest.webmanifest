@@ -1,0 +1,15 @@
+{
+  "name": "Block Burst",
+  "short_name": "Block Burst",
+  "start_url": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#141a3d",
+  "theme_color": "#141a3d",
+  "icons": [{ "src": "/favicon.svg", "sizes": "any", "type": "image/svg+xml" }],
+  "shortcuts": [
+    { "name": "Daily Board", "url": "/?go=daily" },
+    { "name": "Adventure", "url": "/?go=adventure" },
+    { "name": "Streak glance", "url": "/?glance=streak" }
+  ]
+}
