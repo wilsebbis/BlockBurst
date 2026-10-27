@@ -1,5 +1,7 @@
 # Design notes
 
+> **Block Burst (this repository) note.** This is the design record of [blockblastclone](https://github.com/wilsebbis/blockblastclone), which this game was cut down from. Its notes on the engine, the generator, levels, the Cozy look and the Sanctuary still apply. Classic mode, the Classic look, the Daily Board, gifts, challenges, the Blast Pass, collection, events, the shop and store, ranks, leagues, crews, notifications and sponsor breaks were removed here, so the rows about them describe the parent game only. The Penguin Exhibit comes from [blockoutclone](https://github.com/wilsebbis/blockoutclone).
+
 Block Burst is built two ways at once:
 
 * on the same foundations as the other three games in this account (Bark Battle, Project AntLink and Cluck Crossing);

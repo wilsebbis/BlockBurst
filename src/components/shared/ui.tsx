@@ -70,7 +70,7 @@ export function Meter({ value, className, tone = 'bg-emerald-400', label }: { va
 }
 
 export function Screen({ children, className }: { children: ReactNode; className?: string }) {
-  return <div className={clsx('mx-auto flex h-full w-full max-w-lg flex-col overflow-y-auto pb-28', className)}>{children}</div>;
+  return <div className={clsx('mx-auto flex h-full w-full max-w-lg flex-col overflow-y-auto pb-10', className)}>{children}</div>;
 }
 
 export function Section({ title, children, className }: { title: string; children: ReactNode; className?: string }) {

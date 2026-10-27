@@ -10,65 +10,52 @@ import { paintBackdrop, sceneById, Weather, type SceneId } from '../engine/scene
 import { sceneFor } from '../lib/scenery';
 import { drawPolaroid, PHOTO_ASPECT } from '../lib/polaroid';
 import { countRescues } from '../lib/sanctuary';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { GameOverModal } from '../components/game/GameOverModal';
-import { RevivePrompt } from '../components/game/RevivePrompt';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { PauseModal } from '../components/game/PauseModal';
 import { TickingNumber } from '../components/shared/TickingNumber';
 import { Button } from '../components/shared/ui';
 import { GameController, type Look } from '../engine/GameController';
 import { COZY_PALETTE } from '../engine/cozy';
-import { isCozy } from '../lib/look';
 import { levelFor, starsFor, worldOf } from '../engine/levels';
 import { synth } from '../engine/WebAudioSynthesizer';
-import { maybeInterstitial, watchReviveAd } from '../lib/adService';
-import { cosmeticById, mustCosmetic } from '../lib/cosmetics';
-import { dailyTheme } from '../lib/events';
 import { buzz } from '../lib/haptics';
-import { adventureRequest, classicRequest } from '../lib/requests';
+import { adventureRequest } from '../lib/requests';
 import { clearGame, loadGame, saveGame } from '../lib/resume';
 import { downloadCard, fmt, shareOrCopy } from '../lib/share';
 import { useMetaStore, type RunOutcome } from '../stores/useMetaStore';
 import { useNav, type PlayRequest } from '../stores/useNav';
 import type { GameState } from '../types/game';
 
-const sessionStart = Date.now();
+/** The engine's board colours, used only by its non-Cozy drawing paths; Block Burst always plays Cozy. */
+const BOARD_THEME = { bg: '#1e2a5a', cell: '#2a3772' };
 
-function useLook(req: PlayRequest | null): Look {
-  const loadout = useMetaStore((s) => s.loadout);
+/** The level being played: its number, from the request (every request is an Adventure level). */
+const levelOf = (req: PlayRequest) => req.cfg.level ?? 1;
+
+function useLook(): Look {
   const settings = useMetaStore((s) => s.settings);
-  const skin = mustCosmetic(loadout.skin);
-  // Event weeks dress the Daily Board; it's cosmetic only.
-  const themeId = (req?.mode === 'daily' && req.day && dailyTheme(req.day)) || loadout.theme;
-  const theme = cosmeticById(themeId) ?? mustCosmetic('midnight');
   const reduce = settings.reducedMotion || (typeof matchMedia !== 'undefined' && matchMedia('(prefers-reduced-motion: reduce)').matches);
-  const cozy = isCozy(settings);
-  const burst = mustCosmetic(loadout.burst).burst!;
   // One Look object per real change, not per render: the game re-renders on every move, and handing the
   // controller a fresh Look each time rebuilt its sprites and re-ran this effect after every placement.
   return useMemo(
-    () => ({ cozy, skin: cozy ? { style: 'cozy' as const, palette: COZY_PALETTE } : { style: skin.style!, palette: skin.palette! }, theme: { bg: theme.board!.bg, cell: theme.board!.cell }, burst, reducedMotion: reduce, clearPreview: settings.clearPreview }),
-    [cozy, skin, theme, burst, reduce, settings.clearPreview],
+    () => ({ cozy: true, skin: { style: 'cozy' as const, palette: COZY_PALETTE }, theme: BOARD_THEME, burst: 'spark' as const, reducedMotion: reduce, clearPreview: settings.clearPreview }),
+    [reduce, settings.clearPreview],
   );
 }
 
 export function PlayScreen() {
   const navReq = useNav((s) => s.play);
-  const returnTo = useNav((s) => s.returnTo);
   const go = useNav((s) => s.go);
   const start = useNav((s) => s.start);
   const settings = useMetaStore((s) => s.settings);
   const recordRun = useMetaStore((s) => s.recordRun);
-  const best = useMetaStore((s) => s.best);
-  const dailyBest = useMetaStore((s) => (navReq?.day ? (s.daily[navReq.day]?.score ?? 0) : 0));
   const [req, setReq] = useState<PlayRequest | null>(navReq);
   const [round, setRound] = useState(0);
-  const look = useLook(req);
+  const look = useLook();
   const wrap = useRef<HTMLDivElement>(null);
   const canvas = useRef<HTMLCanvasElement>(null);
   const ctl = useRef<GameController | null>(null);
   const started = useRef(Date.now());
-  const passedBest = useRef(false);
   const [hud, setHud] = useState<GameState | null>(null);
   const [hinted, setHinted] = useState(false);
   const [paused, setPaused] = useState(false);
@@ -90,27 +77,18 @@ export function PlayScreen() {
   const milestone = useRef(0);
   /** The end-of-round card (success: stars, chest and coins; fail: empty stars and a FAIL stamp), while it's showing. */
   const [result, setResult] = useState<Omit<CelebrationSpec, 'coins'> | null>(null);
-  const [reviveBusy, setReviveBusy] = useState(false);
-  /** The sponsor break (and its ad choices) shows in its own window: the star card steps aside while it runs. */
-  const [onBreak, setOnBreak] = useState(false);
-  /** The card came back after a skipped break: show it settled, without replaying its animation. */
-  const [cardBack, setCardBack] = useState(false);
   const lookRef = useRef(look);
   lookRef.current = look;
-
-  const prevBest = req?.mode === 'classic' ? best : req?.mode === 'daily' || req?.mode === 'archive' ? dailyBest : 0;
 
   useEffect(() => {
     if (!req || !canvas.current) return;
     const saved = round === 0 ? loadGame() : null;
     const resume = saved && JSON.stringify(saved.req) === JSON.stringify(req) ? saved : null;
     started.current = Date.now() - (resume?.elapsedMs ?? 0);
-    passedBest.current = false;
     milestone.current = 0;
-    // A new Adventure level: say how forgiving it is (measured by Burst Bot, worked out in the background).
-    if (req?.mode === 'adventure' && req.cfg.level && !resume) {
-      const n = req.cfg.level;
-      void clearRateSoon(n).then((rate) => {
+    // A new level: say how forgiving it is (measured by Burst Bot, worked out in the background).
+    if (resume === null) {
+      void clearRateSoon(levelOf(req)).then((rate) => {
         if (ctl.current && ctl.current.state.placed < 3) showToast(difficultyLine(rate), 4000);
       });
     }
@@ -119,8 +97,6 @@ export function PlayScreen() {
     setOffer(null);
     revived.current = false;
     rescuedColours.current = [];
-    setCardBack(false);
-    setOnBreak(false);
     setResult(null);
     setWasRevived(false);
     // The request this game was started from, narrowed for the helpers below.
@@ -137,14 +113,11 @@ export function PlayScreen() {
         },
         onReturn: () => synth.playReturn(),
         onMove: (e, st) => {
-          const isCozyLook = lookRef.current.cozy;
-          if (isCozyLook) synth.playBubble(e.placePoints);
-          else synth.playPlace(e.placePoints);
+          synth.playBubble(e.placePoints);
           for (const x of e.cleared) rescuedColours.current.push(x.colour);
           const lines = e.rows.length + e.cols.length;
           if (lines) {
-            if (isCozyLook) synth.playChirps(lines, e.combo);
-            else synth.playClear(lines, e.combo);
+            synth.playChirps(lines, e.combo);
             if (e.combo >= 3) synth.playCombo(e.combo);
             buzz(lines >= 3 ? [20, 40, 30] : [14, 30, 14]);
             setSay(`Cleared ${lines} line${lines > 1 ? 's' : ''}${e.combo > 1 ? `, combo ${e.combo}` : ''}. Score ${st.score}.`);
@@ -156,19 +129,14 @@ export function PlayScreen() {
           if (e.gems) synth.playGem();
           if (e.perfect) synth.playPerfect();
           if (e.dealt) synth.playDeal();
-          // Milestones on the way to the goal (or to your best): a little toast and chime at 25, 50 and 75%.
-          const progress = req.mode === 'adventure' ? (st.goal?.kind === 'gems' ? st.gemsCollected / st.goal.count : st.goal?.kind === 'score' ? st.score / st.goal.target : 0) : prevBest > 0 ? st.score / prevBest : 0;
+          // Milestones on the way to the goal: a little toast and chime at 25, 50 and 75%.
+          const progress = goalProgress(st);
           const reached = [0.75, 0.5, 0.25].find((m) => progress >= m && progress < 1 && milestone.current < m);
           if (reached && !st.over) {
             milestone.current = reached;
             const pct = Math.round(reached * 100);
-            showToast(req.mode === 'adventure' ? `🎯 ${reached === 0.5 ? 'Halfway there!' : `${pct}% of the way there!`}` : `👑 ${reached === 0.5 ? 'Halfway to your best!' : `${pct}% of your best!`}`);
+            showToast(`🎯 ${reached === 0.5 ? 'Halfway there!' : `${pct}% of the way there!`}`);
             synth.playCoinArrive(3 + Math.round(reached * 8));
-          }
-          if (!passedBest.current && prevBest > 0 && st.score > prevBest && req.mode !== 'adventure') {
-            showToast('👑 New best territory!');
-            passedBest.current = true;
-            synth.playPassBest();
           }
           // A revived game can't be rebuilt from its moves, so it isn't saved for resuming.
           if (!st.over && !revived.current) saveGame({ req, log: ctl.current?.log ?? [], hinted: ctl.current?.hinted ?? false, elapsedMs: Date.now() - started.current });
@@ -190,15 +158,12 @@ export function PlayScreen() {
         },
         onOver: (st) => {
           clearGame();
-          const won = st.won;
-          const isCozyLook = lookRef.current.cozy;
-          if (!won && isCozyLook) synth.playWhimper();
-          // One chance per game to wipe the tears and play on, before anything is recorded. A new best is a happy
-          // ending, though: in the Cozy look it goes straight to its celebration.
-          if (!won && !revived.current && !(isCozyLook && beatsBest(st))) {
+          if (!st.won) synth.playWhimper();
+          // One chance per game to wipe the tears and play on, before anything is recorded. The offer is the fail
+          // card itself (empty stars, a FAIL stamp, then the choices).
+          if (!st.won && !revived.current) {
             setOffer(st);
-            // Cozy: the offer is the fail card itself (empty stars, a FAIL stamp, then the choices).
-            if (isCozyLook) setResult({ title: 'So close!', ribbon: ribbonFor(), stars: 0, fail: true });
+            setResult({ title: 'So close!', ribbon: ribbonFor(), stars: 0, fail: true });
             return;
           }
           finish(st);
@@ -206,40 +171,23 @@ export function PlayScreen() {
       },
       resume ? { log: resume.log, hinted: resume.hinted } : undefined,
     );
-    function beatsBest(st: GameState): boolean {
-      return run.mode !== 'adventure' && st.score > 0 && st.score > prevBest;
-    }
     function ribbonFor(): string {
-      return run.mode === 'adventure' ? `Level ${run.cfg.level}` : run.mode === 'classic' ? 'Classic' : 'Daily Board';
+      return `Level ${levelOf(run)}`;
     }
     function finish(st: GameState) {
-      const won = st.won;
-      // A new best is a happy ending too: the tears dry up and the creatures throw a party.
-      const isNewBest = beatsBest(st);
-      if (isNewBest && lookRef.current.cozy) {
-        ctl.current?.setCelebrate(true);
-        synth.playCheer();
-      }
-      // A won round (or a new best) gets the full celebration: name, banner, stars, then a chest of coins. In the
-      // Cozy look anything else gets the fail card.
-      if (won && run.mode === 'adventure' && run.cfg.level) {
-        const stars = starsFor(levelFor(run.cfg.level), st.placed);
+      // A won level gets the full celebration: name, banner, stars, then a chest of coins. Anything else gets
+      // the fail card.
+      if (st.won) {
+        const stars = starsFor(levelFor(levelOf(run)), st.placed);
         setResult({ title: stars === 3 ? 'Perfect!' : 'Well done!', ribbon: ribbonFor(), stars });
-      } else if (won || isNewBest) setResult({ title: 'New best!', ribbon: ribbonFor(), stars: 0, crown: true });
-      else if (lookRef.current.cozy) setResult({ title: 'So close!', ribbon: ribbonFor(), stars: 0, fail: true });
-      else setResult(null);
-      if (won && lookRef.current.cozy) {
         synth.playCheer();
         window.setTimeout(() => synth.playWin(), 350);
-      } else if (won) synth.playWin();
-      else if (passedBest.current) synth.playNewBest();
-      else synth.playCalmEnd();
+      } else {
+        setResult({ title: 'So close!', ribbon: ribbonFor(), stars: 0, fail: true });
+        synth.playCalmEnd();
+      }
       setOver(st);
-      const log = ctl.current!.log.slice();
-      void recordRun({ cfg: run.cfg, mode: run.mode, day: run.day, state: st, log, hinted: ctl.current!.hinted, timeMs: Date.now() - started.current, rescued: countRescues(rescuedColours.current) }).then((o) => {
-        setOutcome(o);
-        if (o.rank && o.rank.counted && o.rank.after > o.rank.before && Math.floor(o.rank.after / 100) > Math.floor(o.rank.before / 100)) synth.playRankUp();
-      });
+      setOutcome(recordRun({ cfg: run.cfg, state: st, rescued: countRescues(rescuedColours.current) }));
     }
     finishRef.current = finish;
     ctl.current = c;
@@ -257,11 +205,11 @@ export function PlayScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [req, round]);
 
-  // Cozy scenery: where the creatures are right now. Classic games wander somewhere new every few thousand points.
-  const scene: SceneId | null = look.cozy && req ? sceneFor({ pick: settings.scenery ?? 'journey', mode: req.mode, day: req.day, level: req.cfg.level, score: hud?.score ?? 0 }) : null;
+  // Scenery: where the creatures are right now. Each world has its own place, unless Settings picks one.
+  const scene: SceneId | null = req ? sceneFor({ pick: settings.scenery, level: levelOf(req) }) : null;
   useEffect(() => {
     ctl.current?.setScene(scene);
-    // Each place has its own tune (the Classic look plays the meadow's).
+    // Each place has its own tune.
     synth.music.setTheme(scene ?? 'meadow');
   }, [scene, req, round]);
   // The music steps back under the results and the pause menu.
@@ -341,15 +289,10 @@ export function PlayScreen() {
     return () => window.removeEventListener('keydown', onKey);
   }, [over, paused]);
 
-  const leave = useCallback(
-    async (then: () => void) => {
-      // The natural break between games: the only place a sponsor break can appear, after the results are closed.
-      setOver(null);
-      await maybeInterstitial();
-      then();
-    },
-    [],
-  );
+  function leave(then: () => void) {
+    setOver(null);
+    then();
+  }
 
   function showToast(text: string, ms = 2600) {
     setArrival(text);
@@ -357,26 +300,13 @@ export function PlayScreen() {
     toastTimer.current = window.setTimeout(() => setArrival(null), ms);
   }
 
-  /** Wipe their tears: clear a few blocks and play on (the one revive this game gets). */
+  /** Wipe their tears: clear a few blocks and play on (the one free revive this game gets). */
   function reviveNow() {
     revived.current = true;
     setWasRevived(true);
     setOffer(null);
     setResult(null);
-    setCardBack(false);
-    if (ctl.current?.revive() === true && lookRef.current.cozy) synth.playTissue();
-    setHinted(true);
-  }
-
-  /** The fail card's revive: a short sponsored break, then play on. Nothing happens if it isn't watched. */
-  async function reviveWithBreak() {
-    setReviveBusy(true);
-    setOnBreak(true);
-    const watched = await watchReviveAd();
-    setOnBreak(false);
-    setReviveBusy(false);
-    if (watched) reviveNow();
-    else setCardBack(true);
+    if (ctl.current?.revive() === true) synth.playTissue();
   }
 
   /** Leaving from the fail card: the declined offer still records the game first. */
@@ -386,7 +316,7 @@ export function PlayScreen() {
       setOffer(null);
       finishRef.current?.(st);
     }
-    void leave(then);
+    leave(then);
   }
 
   /**
@@ -398,20 +328,20 @@ export function PlayScreen() {
     const photo = screenshot();
     if (!st || !photo || !result) return;
     const won = !result.fail;
-    const level = req?.mode === 'adventure' && st.won ? (req.cfg.level ?? null) : null;
+    const level = req !== null && st.won ? levelOf(req) : null;
     const card = drawPolaroid(photo, {
-      number: useMetaStore.getState().totals.games + (offer ? 1 : 0),
+      number: useMetaStore.getState().gamesPlayed + (offer ? 1 : 0),
       stars: won ? result.stars : 0,
       score: st.score,
-      game: { score: st.score, lines: st.lines, maxCombo: st.maxCombo, bestMulti: st.bestMulti, perfects: st.perfects, newBest: outcome?.newBest ?? false, rescued: outcome?.rescued ?? 0, level },
+      game: { score: st.score, lines: st.lines, maxCombo: st.maxCombo, bestMulti: st.bestMulti, perfects: st.perfects, newBest: false, rescued: outcome?.rescued ?? 0, level },
       fail: result.fail,
       site: location.host,
     });
     // The words that go with it end with a link to play, so the Polaroid brings friends to the game.
-    const brag = result.fail ? `So close! ${fmt(st.score)} in Block Burst` : level ? `Level ${level} cleared ${'⭐'.repeat(result.stars)} in Block Burst` : `New best: ${fmt(st.score)} in Block Burst`;
+    const brag = level === null ? `So close! ${fmt(st.score)} in Block Burst` : `Level ${level} cleared ${'⭐'.repeat(result.stars)} in Block Burst`;
     const text = `${brag} 🧩 Play free: ${location.origin}`;
     const r = await shareOrCopy(text, card);
-    if (r === 'failed') downloadCard(card, `block-burst-${String(useMetaStore.getState().totals.games).padStart(3, '0')}.png`);
+    if (r === 'failed') downloadCard(card, `block-burst-${String(useMetaStore.getState().gamesPlayed).padStart(3, '0')}.png`);
   }
 
   if (!req) {
@@ -419,34 +349,28 @@ export function PlayScreen() {
     return null;
   }
 
+  // A level always replays the same start.
   const restart = () => {
     clearGame();
     setPaused(false);
-    // Classic gets a fresh seed; the Daily Board and Adventure levels replay the same start.
-    if (req.mode === 'classic') {
-      const next = classicRequest();
-      setReq(next);
-      start(next, returnTo);
-    }
     setRound((r) => r + 1);
   };
   const home = () => {
     setPaused(false);
-    go(returnTo === 'play' ? 'home' : returnTo);
+    go('home');
   };
   const nextLevel = () => {
-    const next = adventureRequest((req.cfg.level ?? 1) + 1);
+    const next = adventureRequest(levelOf(req) + 1);
     setReq(next);
     setRound((r) => r + 1);
-    start(next, returnTo);
+    start(next);
   };
 
   const g = hud;
   const goal = g?.goal;
-  const theme = cosmeticById((req.mode === 'daily' && req.day && dailyTheme(req.day)) || useMetaStore.getState().loadout.theme)?.board;
 
   return (
-    <div className="app-bg relative flex h-full flex-col" style={{ ['--top' as string]: theme?.top, ['--bottom' as string]: theme?.bottom }}>
+    <div className="app-bg relative flex h-full flex-col">
       {scene && <SceneLayer scene={scene} gust={gust} still={look.reducedMotion} />}
       <header className="relative mx-auto flex w-full max-w-lg items-center gap-2 px-3 pt-[max(0.75rem,env(safe-area-inset-top))]">
         <Button tone="ghost" className="w-12 !px-0 text-lg" onClick={() => setPaused(true)} aria-label="Pause">
@@ -454,7 +378,7 @@ export function PlayScreen() {
         </Button>
         <div className="flex-1 text-center">
           <p className="font-display text-xs font-extrabold uppercase tracking-wide text-white/70">
-            {req.mode === 'adventure' ? `${worldOf(req.cfg.level ?? 1).emoji} Level ${req.cfg.level}` : req.mode === 'classic' ? `👑 ${fmt(Math.max(prevBest, g?.score ?? 0))}` : `📅 ${req.day}${req.mode === 'archive' ? ' (practice)' : ''}`}
+            {worldOf(levelOf(req)).emoji} Level {levelOf(req)}
           </p>
           <p className="font-display text-4xl font-extrabold leading-none text-white text-outline" aria-label={`Score ${g?.score ?? 0}`}>
             <TickingNumber value={g?.score ?? 0} />
@@ -503,60 +427,43 @@ export function PlayScreen() {
             💡 Hint
           </Button>
         )}
-        {hinted && !wasRevived && <span className="text-xs font-bold text-white/70">💡 Hints on: this game won't count for ranks.</span>}
-        {wasRevived && <span className="text-xs font-bold text-white/70">🧻 Revived: this game won't count for ranks.</span>}
+        {hinted && <span className="text-xs font-bold text-white/70">💡 Hints used this level.</span>}
+        {wasRevived && <span className="text-xs font-bold text-white/70">🧻 Tears wiped: playing on.</span>}
       </footer>
 
       <p className="sr-only" aria-live="polite">
         {say}
       </p>
-      {result && (over || offer) && !onBreak && (
+      {result && (over || offer) && (
         <ResultCard
           key={`${round}-${offer ? 'offer' : 'done'}-${result.fail ? 'fail' : 'win'}`}
           spec={result}
           coins={outcome ? outcome.coinsEarned + (outcome.adventure?.coins ?? 0) : null}
-          still={look.reducedMotion || cardBack}
+          still={look.reducedMotion}
           prompt={result.fail ? (offer ? { title: '😢 Out of room! Wipe their tears?', text: 'Clear a few blocks and keep going.' } : { title: '😢 Out of room!' }) : undefined}
           actions={
             result.fail
               ? [
-                  ...(offer ? [{ label: '🎬 Short break', tone: 'go' as const, disabled: reviveBusy, onClick: () => void reviveWithBreak() }] : []),
-                  { label: '💔 Start Over', tone: 'gold' as const, disabled: reviveBusy, onClick: () => endThen(restart) },
+                  ...(offer ? [{ label: '🧻 Wipe their tears', tone: 'go' as const, onClick: reviveNow }] : []),
+                  { label: '💔 Start Over', tone: 'gold' as const, onClick: () => endThen(restart) },
                 ]
               : []
           }
-          // A success carries on with a tap anywhere: the next level, or a fresh game after a new best. Home is
-          // in the pause menu.
-          onContinue={result.fail ? undefined : () => void leave(req.mode === 'adventure' && over?.won ? nextLevel : restart)}
+          // A cleared level carries on to the next with a tap anywhere. Home is in the pause menu.
+          onContinue={result.fail ? undefined : () => leave(nextLevel)}
           onShare={() => void sharePolaroid()}
         />
       )}
 
       {paused && !over && <PauseModal onResume={() => setPaused(false)} onRestart={restart} onQuit={home} canSave={(ctl.current?.log.length ?? 0) > 0} />}
-      {offer && !over && !look.cozy && (
-        <RevivePrompt
-          onRevive={reviveNow}
-          onDecline={() => {
-            setOffer(null);
-            finishRef.current?.(offer);
-          }}
-        />
-      )}
-      {/* The Classic look's results screen; the Cozy look only ever shows the star card. */}
-      {over && !result && !look.cozy && (
-        <GameOverModal
-          state={over}
-          mode={req.mode}
-          day={req.day}
-          level={req.cfg.level}
-          hinted={hinted}
-          outcome={outcome}
-          sessionMs={Date.now() - sessionStart}
-          onAgain={() => void leave(restart)}
-          onNext={() => void leave(nextLevel)}
-          onHome={() => void leave(home)}
-        />
-      )}
     </div>
   );
+}
+
+/** How far along the level's goal a game is, from 0 to 1. */
+function goalProgress(state: GameState): number {
+  const goal = state.goal;
+  if (goal === null) return 0;
+  if (goal.kind === 'gems') return state.gemsCollected / goal.count;
+  return state.score / goal.target;
 }

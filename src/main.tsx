@@ -14,7 +14,7 @@ createRoot(document.getElementById('root')!).render(
 
 // Dev-only handle for poking at the game from the console or a test browser.
 if (import.meta.env.DEV) {
-  void Promise.all([import('./stores/useMetaStore'), import('./stores/useNav'), import('./stores/useEconomyStore')]).then(([m, n, e]) => {
-    Object.assign(window, { __burst: { meta: m.useMetaStore, nav: n.useNav, economy: e.useEconomyStore } });
+  void Promise.all([import('./stores/useMetaStore'), import('./stores/useNav')]).then(([m, n]) => {
+    Object.assign(window, { __burst: { meta: m.useMetaStore, nav: n.useNav } });
   });
 }

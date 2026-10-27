@@ -4,12 +4,11 @@
   "start_url": "/",
   "display": "standalone",
   "orientation": "portrait",
-  "background_color": "#141a3d",
-  "theme_color": "#141a3d",
+  "background_color": "#f5ebe3",
+  "theme_color": "#f5ebe3",
   "icons": [{ "src": "/favicon.svg", "sizes": "any", "type": "image/svg+xml" }],
   "shortcuts": [
-    { "name": "Daily Board", "url": "/?go=daily" },
-    { "name": "Adventure", "url": "/?go=adventure" },
-    { "name": "Streak glance", "url": "/?glance=streak" }
+    { "name": "Sanctuary", "url": "/?go=sanctuary" },
+    { "name": "Penguin Exhibit", "url": "/?go=exhibit" }
   ]
 }

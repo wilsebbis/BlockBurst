@@ -7,7 +7,7 @@ import { decodeLog, encodeLog } from '../engine/RunLog';
 import type { PlayRequest } from '../stores/useNav';
 import type { Move } from '../types/game';
 
-const KEY = 'burst-resume-v2';
+const KEY = 'blockburst-resume-v1';
 
 export interface Saved {
   req: PlayRequest;

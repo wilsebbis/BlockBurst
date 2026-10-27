@@ -3,7 +3,7 @@
   "private": true,
   "version": "0.1.0",
   "type": "module",
-  "description": "Block Burst: a Block Blast-style 8x8 block puzzle for the web, with a UTC Daily Board, Adventure levels, ranks, weekly leagues, a season pass, a rotating item shop and crews.",
+  "description": "Block Burst: a cozy Block Blast-style 8x8 block puzzle for the web. Adventure levels in order, a Sanctuary for the blobs you clear, and a Penguin Exhibit.",
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",

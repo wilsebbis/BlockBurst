@@ -1,15 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { SIZE } from "../src/engine/board";
 import { boardBodies, COZY_CLEARING, COZY_PALETTE, emoteFor, faceAnchor, gazeTowards, shapeLinks, shapeParts } from "../src/engine/cozy";
-import { isCozy } from "../src/lib/look";
 
 describe("the Cozy look", () => {
-  it("is the default, including for saves made before the setting existed", () => {
-    expect(isCozy({})).toBe(true);
-    expect(isCozy({ look: "cozy" })).toBe(true);
-    expect(isCozy({ look: "classic" })).toBe(false);
-  });
-
   it("grows two touching pieces of the same colour into one creature", () => {
     const colours = new Array<number>(SIZE * SIZE).fill(0);
     const owners = new Array<number>(SIZE * SIZE).fill(0);
