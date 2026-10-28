@@ -277,7 +277,7 @@ export function PlayScreen() {
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (over) return;
+      if (over || offer) return;
       if ((e.key === 'Escape' || e.key === 'p' || e.key === 'P') && !ctl.current?.key('Escape')) {
         setPaused((p) => !p);
         e.preventDefault();
@@ -287,7 +287,7 @@ export function PlayScreen() {
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [over, paused]);
+  }, [over, offer, paused]);
 
   function leave(then: () => void) {
     setOver(null);
@@ -309,14 +309,12 @@ export function PlayScreen() {
     if (ctl.current?.revive() === true) synth.playTissue();
   }
 
-  /** Leaving from the fail card: the declined offer still records the game first. */
-  function endThen(then: () => void) {
-    if (offer) {
-      const st = offer;
-      setOffer(null);
-      finishRef.current?.(st);
-    }
-    leave(then);
+  /** The revive's countdown ran out: the loss is final and recorded, and the card waits for a tap to start over. */
+  function declineRevive() {
+    if (!offer) return;
+    const st = offer;
+    setOffer(null);
+    finishRef.current?.(st);
   }
 
   /**
@@ -436,21 +434,17 @@ export function PlayScreen() {
       </p>
       {result && (over || offer) && (
         <ResultCard
-          key={`${round}-${offer ? 'offer' : 'done'}-${result.fail ? 'fail' : 'win'}`}
+          // The revive running out keeps the same FAIL card; only what's under it changes.
+          key={`${round}-${result.fail ? 'fail' : 'win'}`}
           spec={result}
           coins={outcome ? outcome.coinsEarned + (outcome.adventure?.coins ?? 0) : null}
           still={look.reducedMotion}
           prompt={result.fail ? (offer ? { title: '😢 Out of room! Wipe their tears?', text: 'Clear a few blocks and keep going.' } : { title: '😢 Out of room!' }) : undefined}
-          actions={
-            result.fail
-              ? [
-                  ...(offer ? [{ label: '🧻 Wipe their tears', tone: 'go' as const, onClick: reviveNow }] : []),
-                  { label: '💔 Start Over', tone: 'gold' as const, onClick: () => endThen(restart) },
-                ]
-              : []
-          }
-          // A cleared level carries on to the next with a tap anywhere. Home is in the pause menu.
-          onContinue={result.fail ? undefined : () => leave(nextLevel)}
+          actions={[]}
+          // One chance per game to wipe the tears, on a short clock; then it's gone and the loss is recorded.
+          countdown={offer ? { label: '🧻 Wipe their tears', seconds: REVIVE_SECONDS, onClick: reviveNow, onExpire: declineRevive } : undefined}
+          // A tap anywhere carries on: a cleared level to the next, a lost one to a fresh go. Home is in the pause menu.
+          onContinue={offer ? undefined : () => leave(result.fail ? restart : nextLevel)}
           onShare={() => void sharePolaroid()}
         />
       )}
@@ -459,6 +453,9 @@ export function PlayScreen() {
     </div>
   );
 }
+
+/** How long the revive stays on offer before the loss is final. */
+const REVIVE_SECONDS = 5;
 
 /** How far along the level's goal a game is, from 0 to 1. */
 function goalProgress(state: GameState): number {

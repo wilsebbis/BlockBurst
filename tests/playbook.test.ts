@@ -27,13 +27,14 @@ describe('humane playbook', () => {
     expect(home).toContain('start(adventureRequest(nextLevel))');
   });
 
-  it('a lost level offers one free revive, and starting over is always free', () => {
+  it('a lost level offers one free revive on a countdown, then a tap starts over', () => {
     const play = read('src/app/PlayScreen.tsx');
     // Once per game: the offer is guarded by the revived flag, which resets only for a new game.
     expect(play).toContain('!st.won && !revived.current');
     expect(play).toContain('revived.current = false;');
-    expect(play).toContain("...(offer ? [{ label: '🧻 Wipe their tears'");
-    expect(play).toContain("{ label: '💔 Start Over'");
+    expect(play).toContain("countdown={offer ? { label: '🧻 Wipe their tears', seconds: REVIVE_SECONDS");
+    expect(play).toContain('const REVIVE_SECONDS = 5;');
+    expect(play).toContain('leave(result.fail ? restart : nextLevel)');
   });
 
   it('the results and pause screens sell nothing', () => {
