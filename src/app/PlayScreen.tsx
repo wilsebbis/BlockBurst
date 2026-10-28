@@ -4,6 +4,7 @@
  */
 import { clearRateSoon, difficultyLine } from '../lib/difficulty';
 import { ResultCard } from '../components/game/ResultCard';
+import { ReviveOverlay } from '../components/game/ReviveOverlay';
 import type { CelebrationSpec } from '../engine/celebration';
 import { SceneLayer } from '../components/game/SceneLayer';
 import { paintBackdrop, sceneById, Weather, type SceneId } from '../engine/scenes';
@@ -159,8 +160,8 @@ export function PlayScreen() {
         onOver: (st) => {
           clearGame();
           if (!st.won) synth.playWhimper();
-          // One chance per game to wipe the tears and play on, before anything is recorded. The offer is the fail
-          // card itself (empty stars, a FAIL stamp, then the choices).
+          // One chance per game to wipe the tears and play on, before anything is recorded: a 5-second countdown
+          // over the board (ReviveOverlay). If it runs out, the fail card follows.
           if (!st.won && !revived.current) {
             setOffer(st);
             setResult({ title: 'So close!', ribbon: ribbonFor(), stars: 0, fail: true });
@@ -432,19 +433,17 @@ export function PlayScreen() {
       <p className="sr-only" aria-live="polite">
         {say}
       </p>
-      {result && (over || offer) && (
+      {offer && <ReviveOverlay still={look.reducedMotion} onRevive={reviveNow} onExpire={declineRevive} />}
+      {result && over && (
         <ResultCard
-          // The revive running out keeps the same FAIL card; only what's under it changes.
           key={`${round}-${result.fail ? 'fail' : 'win'}`}
           spec={result}
           coins={outcome ? outcome.coinsEarned + (outcome.adventure?.coins ?? 0) : null}
           still={look.reducedMotion}
-          prompt={result.fail ? (offer ? { title: '😢 Out of room! Wipe their tears?', text: 'Clear a few blocks and keep going.' } : { title: '😢 Out of room!' }) : undefined}
+          prompt={result.fail ? { title: '😢 Out of room!' } : undefined}
           actions={[]}
-          // One chance per game to wipe the tears, on a short clock; then it's gone and the loss is recorded.
-          countdown={offer ? { label: '🧻 Wipe their tears', seconds: REVIVE_SECONDS, onClick: reviveNow, onExpire: declineRevive } : undefined}
           // A tap anywhere carries on: a cleared level to the next, a lost one to a fresh go. Home is in the pause menu.
-          onContinue={offer ? undefined : () => leave(result.fail ? restart : nextLevel)}
+          onContinue={() => leave(result.fail ? restart : nextLevel)}
           onShare={() => void sharePolaroid()}
         />
       )}
@@ -453,9 +452,6 @@ export function PlayScreen() {
     </div>
   );
 }
-
-/** How long the revive stays on offer before the loss is final. */
-const REVIVE_SECONDS = 5;
 
 /** How far along the level's goal a game is, from 0 to 1. */
 function goalProgress(state: GameState): number {

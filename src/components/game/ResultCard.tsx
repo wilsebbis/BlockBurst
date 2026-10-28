@@ -5,15 +5,13 @@
  *     on a cushion, then a treasure chest waits to be tapped and bursts into coins;
  *   - fail (0 stars): the stars stay empty and a red FAIL stamp slams down where the coins would be.
  *
- * Once it settles, what comes under the card depends on the round: a win says "Tap to continue"; a loss with the
- * free revive still unused offers it on a countdown, and when that runs out (or the revive is already spent) it
- * says "Tap to continue", which starts the level over. The chest is a real button, so it works from the keyboard
+ * Once it settles, "Tap to continue" shows: on to the next level after a win, or a fresh go at this one after a
+ * loss. (The one free revive is offered before this card, by `ReviveOverlay`.) The chest is a real button, so it works from the keyboard
  * too. With reduced motion the finished card shows straight away.
  */
 import { useEffect, useRef, useState, type ComponentProps } from 'react';
 import { Celebration, type CelebrationSpec } from '../../engine/celebration';
 import { synth } from '../../engine/WebAudioSynthesizer';
-import { buzz } from '../../lib/haptics';
 import { Button } from '../shared/ui';
 
 export interface ResultAction {
@@ -23,20 +21,12 @@ export interface ResultAction {
   disabled?: boolean;
 }
 
-export interface ResultCountdown {
-  label: string;
-  seconds: number;
-  onClick(): void;
-  onExpire(): void;
-}
-
 export function ResultCard({
   spec,
   coins,
   still,
   prompt,
   actions,
-  countdown,
   onContinue,
   onShare,
 }: {
@@ -46,8 +36,6 @@ export function ResultCard({
   /** A line (and an optional smaller line) above the buttons. */
   prompt?: { title: string; text?: string };
   actions: ResultAction[];
-  /** A one-shot action on a timer (the revive): it shows with a ring that empties, then `onExpire` is called. */
-  countdown?: ResultCountdown;
   /** When set, "Tap to continue" shows (on the card for a win, under it for a loss) and a tap anywhere calls this. */
   onContinue?(): void;
   /** Shares the round's Polaroid, from a round share button in the card's corner. */
@@ -74,8 +62,7 @@ export function ResultCard({
     let lastClink = 0;
     let lastPing = 0;
     let pings = 0;
-    // How tall the prompt and buttons under the card will be, so the whole stack can be centred. A loss keeps the
-    // same height whether or not the revive is still on offer, so the card doesn't jump when it expires.
+    // How tall the prompt and buttons under the card will be, so the whole stack can be centred.
     const rows = actions.length === 0 ? 0 : actions.length === 3 ? 1 : Math.ceil(actions.length / 2);
     const below = spec.fail ? 14 + 50 + 50 : rows === 0 && !prompt ? 0 : 14 + (prompt ? (prompt.text ? 50 : 32) : 0) + rows * 50 + Math.max(0, rows - 1) * 8;
     // A win's "Tap to continue" is drawn on the card; a loss's sits under it, where the revive was.
@@ -158,7 +145,7 @@ export function ResultCard({
         // A tap anywhere carries on (the share button sits on top of it).
         <button type="button" autoFocus onClick={onContinue} className="absolute inset-0 h-full w-full cursor-pointer border-0 bg-transparent p-0 outline-none" aria-label="Tap to continue" />
       )}
-      {finished && card && (actions.length > 0 || prompt || countdown || (spec.fail && onContinue)) && (
+      {finished && card && (actions.length > 0 || prompt || (spec.fail && onContinue)) && (
         <div className="pop-in absolute flex flex-col items-center gap-2" style={{ left: card.x, top: card.y + card.h + 14, width: card.w }}>
           {prompt && (
             <div className="text-center">
@@ -166,17 +153,16 @@ export function ResultCard({
               {prompt.text && <p className="text-xs font-bold text-[#8a7a70]">{prompt.text}</p>}
             </div>
           )}
-          {countdown && <Countdown {...countdown} still={still} />}
           {actions.length > 0 && (
             <div className={`grid w-full gap-2 ${actions.length === 1 ? 'grid-cols-1' : actions.length === 3 ? 'grid-cols-3' : 'grid-cols-2'}`}>
               {actions.map((a, i) => (
-                <Button key={a.label} tone={a.tone} className="!px-2 text-sm" disabled={a.disabled} onClick={a.onClick} autoFocus={i === 0 && !countdown}>
+                <Button key={a.label} tone={a.tone} className="!px-2 text-sm" disabled={a.disabled} onClick={a.onClick} autoFocus={i === 0}>
                   {a.label}
                 </Button>
               ))}
             </div>
           )}
-          {!countdown && spec.fail && onContinue && (
+          {spec.fail && onContinue && (
             <p className={`pointer-events-none font-display text-xl font-black text-[#6e584a] [text-shadow:0_2px_0_#fff] ${still ? '' : 'animate-pulse'}`}>Tap to continue ▶</p>
           )}
         </div>
@@ -200,73 +186,3 @@ export function ResultCard({
   );
 }
 
-/** The revive button, with a ring that empties over the countdown. When it runs out the offer is gone for good. */
-function Countdown({ label, seconds, onClick, onExpire, still }: ResultCountdown & { still: boolean }) {
-  const [left, setLeft] = useState(Math.ceil(seconds));
-  const [ring, setRing] = useState(1);
-  const used = useRef(false);
-  const expire = useRef(onExpire);
-  expire.current = onExpire;
-
-  useEffect(() => {
-    const end = performance.now() + seconds * 1000;
-    // Start the ring on the next frame so its transition runs from full.
-    const raf = requestAnimationFrame(() => setRing(0));
-    const timer = window.setInterval(() => {
-      const remaining = (end - performance.now()) / 1000;
-      if (remaining > 0) {
-        setLeft(Math.ceil(remaining));
-        return;
-      }
-      window.clearInterval(timer);
-      if (!used.current) {
-        used.current = true;
-        expire.current();
-      }
-    }, 100);
-    return () => {
-      cancelAnimationFrame(raf);
-      window.clearInterval(timer);
-    };
-  }, [seconds]);
-
-  useEffect(() => {
-    if (left < Math.ceil(seconds)) buzz(10);
-  }, [left, seconds]);
-
-  const r = 10;
-  const len = 2 * Math.PI * r;
-  return (
-    <Button
-      tone="go"
-      className="!px-4 text-base"
-      autoFocus
-      aria-label={`${label}, ${left} seconds left`}
-      onClick={() => {
-        if (used.current) return;
-        used.current = true;
-        onClick();
-      }}
-    >
-      {label}
-      <span className="relative grid h-[26px] w-[26px] place-items-center" aria-hidden>
-        <svg className="absolute inset-0 -rotate-90" viewBox="0 0 26 26">
-          <circle cx="13" cy="13" r={r} fill="none" stroke="currentColor" strokeOpacity="0.35" strokeWidth="3" />
-          <circle
-            cx="13"
-            cy="13"
-            r={r}
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="3"
-            strokeLinecap="round"
-            strokeDasharray={len}
-            strokeDashoffset={len * (1 - ring)}
-            style={{ transition: still ? undefined : `stroke-dashoffset ${seconds}s linear` }}
-          />
-        </svg>
-        <span className="text-sm font-black">{left}</span>
-      </span>
-    </Button>
-  );
-}

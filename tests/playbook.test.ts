@@ -32,8 +32,8 @@ describe('humane playbook', () => {
     // Once per game: the offer is guarded by the revived flag, which resets only for a new game.
     expect(play).toContain('!st.won && !revived.current');
     expect(play).toContain('revived.current = false;');
-    expect(play).toContain("countdown={offer ? { label: '🧻 Wipe their tears', seconds: REVIVE_SECONDS");
-    expect(play).toContain('const REVIVE_SECONDS = 5;');
+    expect(play).toContain('{offer && <ReviveOverlay');
+    expect(read('src/components/game/ReviveOverlay.tsx')).toContain('export const REVIVE_SECONDS = 5;');
     expect(play).toContain('leave(result.fail ? restart : nextLevel)');
   });
 
